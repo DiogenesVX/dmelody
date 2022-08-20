@@ -1,0 +1,265 @@
+#!/bin/bash
+# DMelody
+# Requires: yad, mpv, bash, procps, psmisc, gawk, sed, grep, pipewire, wireplumber, coreutils, fonts-noto-color-emoji, findutils, socat, jq, playerctl, libimage-exiftool-perl
+# check if config files exist
+if [ ! -f $HOME/.config/dmelody/license ]; then
+    mkdir -p $HOME/.config/dmelody
+    echo ":)" > $HOME/.config/dmelody/license
+fi
+# variables
+export IFS=$'\r\n'
+export GLOBIGNORE='*'
+export SDL_AUDIODRIVER=pipewire
+export DMELODY_CONFIG=$HOME/.config/dmelody
+export YAD_OPTIONS="--title=DMelody --center --align=center --text-align=center --buttons-layout=center"
+# preparing settings
+echo 0 > $DMELODY_CONFIG/click
+# play button
+function mpvplay() {
+    mpv \
+    --hwdec \
+    --ao=sdl \
+    --no-video \
+    --really-quiet \
+    --loop-playlist \
+    --input-ipc-server=/tmp/mpvsocket \
+    --playlist=$DMELODY_CONFIG/dplaylist
+    }
+# play selected
+function mpvplayselected() {
+    echo quit | socat - /tmp/mpvsocket
+    mpv \
+    --hwdec \
+    --ao=sdl \
+    --no-video \
+    --really-quiet \
+    --loop-playlist \
+    --input-ipc-server=/tmp/mpvsocket \
+    --playlist=$DMELODY_CONFIG/dplaylist \
+    --playlist-start=$(cat $DMELODY_CONFIG/click | awk 'END{print $1}')
+    }
+# play selected single argument
+function mpvplayselectedsingle() {
+    echo quit | socat - /tmp/mpvsocket
+    mpv \
+    --hwdec \
+    --ao=sdl \
+    --no-video \
+    --really-quiet \
+    --loop-playlist \
+    --input-ipc-server=/tmp/mpvsocket \
+    --playlist=/tmp/dmelodyplaylist \
+    --playlist-start=$(cat $DMELODY_CONFIG/click | awk 'END{print $1}')
+    }
+# select a new playlist
+function mpvnewplaylist() {
+    i=0
+    IFS=$'\r\n'
+    GLOBIGNORE='*'
+    DMELODY_CONFIG=$HOME/.config/dmelody
+    yad \
+    --multiple \
+    --directory \
+    --width=1000 \
+    --height=1000 \
+    --quoted-output \
+    --separator="//" \
+    --filename=/home/diogenes/Music/ \
+    --file-selection > $DMELODY_CONFIG/directories
+    yadexitcode=$?
+    if [ $yadexitcode = 1 ]; then
+        exit
+    fi
+    sed -i 's/\/\// /g' $DMELODY_CONFIG/directories
+    eval find $(cat $DMELODY_CONFIG/directories) \
+    -iname "*.mp3" \
+    -o -iname "*.ogg" \
+    -o -iname "*.oga" \
+    -o -iname "*.m4a" \
+    -o -iname "*.wav" \
+    -o -iname "*.wma" \
+    -o -iname "*.ape" \
+    -o -iname "*.mogg" \
+    -o -iname "*.opus" \
+    -o -iname "*.flac" \
+    -o -iname "*.alac" > $DMELODY_CONFIG/dplaylist
+    playlistarray=( $(cat $DMELODY_CONFIG/dplaylist) )
+    number_of_lines=$(cat $DMELODY_CONFIG/dplaylist | wc -l)
+    printf '' > $DMELODY_CONFIG/dplaylist2
+    while [ $i -lt $number_of_lines ]; do
+        exiftool \
+        -f \
+        -FileSize \
+        -Artist \
+        -Title \
+        -Album \
+        -Genre \
+        -Duration \
+        -FileName \
+        "${playlistarray[$i]}" | \
+        awk '{for (a=3;a<=NF;a++) {printf "%s ", $a} printf "\n"}' | \
+        sed 's/: //g' | \
+        sed 's/ (approx)//g' | \
+        sed 's/ *$//g' | \
+        sed '1s/.*/'$i'/' >> $DMELODY_CONFIG/dplaylist2
+        echo "#"
+        i=$(( $i + 1 ))
+    done | \
+    yad \
+    --on-top \
+    --pulsate \
+    --progress \
+    --width=500 \
+    --auto-kill \
+    --auto-close \
+    --no-buttons \
+    --title="Loading playlist, please wait..."
+    sed -i 's/^$/None/' $DMELODY_CONFIG/dplaylist2 # fix bug incorrect playlist empty line
+    echo quit | socat - /tmp/mpvsocket & killall -15 mpv
+    ps axf | grep "DMELODYRUNNING" | grep -v grep | awk '{print "kill -USR1 " $1}' | bash
+    }
+# show currently playing song info
+function showcurrent() {
+    echo "Artist: \
+    $(echo '{ "command": ["get_property", "filtered-metadata"] }' | \
+    socat - /tmp/mpvsocket | jq ".data.Artist" | \
+    tr -d '"') " > /tmp/mpvnowplaying
+    echo "Tile: \
+    $(echo '{ "command": ["get_property", "filtered-metadata"] }' | \
+    socat - /tmp/mpvsocket | \
+    jq ".data.Title" | tr -d '"') " >> /tmp/mpvnowplaying
+    echo "Location: \
+    $(echo '{ "command": ["get_property", "path"] }' | \
+    socat - /tmp/mpvsocket | \
+    jq ".data" | tr -d '"') " >> /tmp/mpvnowplaying
+    yad \
+    --text-info \
+    --width=1300 \
+    --height=117 \
+    --button=$"Close":0 \
+    --filename=/tmp/mpvnowplaying
+    }
+export -f mpvplay
+export -f mpvplayselected
+export -f mpvplayselectedsingle
+export -f mpvnewplaylist
+export -f showcurrent
+# if run with arguments (e. g. dmelody song.mp3) then play and loop that track
+if [ $1 ]; then
+    i=0
+    IFS=$'\r\n'
+    GLOBIGNORE='*'
+    DMELODY_CONFIG=$HOME/.config/dmelody
+    printf "%${w}s\n" $* > /tmp/dmelodyplaylist
+    playlistarray=( $(cat /tmp/dmelodyplaylist) )
+    number_of_lines=$(cat /tmp/dmelodyplaylist | wc -l)
+    printf '' > /tmp/dmelodyplaylist2 
+    while [ $i -lt $number_of_lines ]; do
+        exiftool \
+        -f \
+        -FileSize \
+        -Artist \
+        -Title \
+        -Album \
+        -Genre \
+        -Duration \
+        -FileName \
+        "${playlistarray[$i]}" | \
+        awk '{for (a=3;a<=NF;a++) {printf "%s ", $a} printf "\n"}' | \
+        sed 's/: //g' | \
+        sed 's/ (approx)//g' | \
+        sed 's/ *$//g' | \
+        sed '1s/.*/'$i'/' >> /tmp/dmelodyplaylist2
+        echo "#"
+        i=$(( $i + 1 ))
+    done
+    sed -i 's/^$/None/' /tmp/dmelodyplaylist2 # fix bug incorrect playlist empty line
+    mpv \
+    --hwdec \
+    --ao=sdl \
+    --no-video \
+    --loop-playlist \
+    --playlist=/tmp/dmelodyplaylist \
+    --input-ipc-server=/tmp/mpvsocket &
+    yad \
+    --list \
+    --no-click \
+    --no-markup \
+    --no-escape \
+    --width=1900 \
+    --height=1000 \
+    --separator='' \
+    --ellipsize=start \
+    --grid-lines=both \
+    --ellipsize-cols=7 \
+    --select-action="echo" > $DMELODY_CONFIG/click \
+    --dclick-action="DMELODYRUNNING" \
+    --column=$"No" \
+    --column=$"Artist" \
+    --column=$"Title" \
+    --column=$"Album" \
+    --column=$"Genre" \
+    --column=$"Duration" \
+    --column=$"File Name" \
+    --button=$"▶ Play":"bash -c mpvplay" \
+    --button=$"▶ Play Sel":"bash -c mpvplayselectedsingle" \
+    --button=$"♬ Show Playing":"bash -c showcurrent" \
+    --button=$"⏮ Prev":'bash -c "echo playlist-prev | socat - /tmp/mpvsocket"' \
+    --button=$"⏸ Pause":'bash -c "echo cycle pause | socat - /tmp/mpvsocket"' \
+    --button=$"⏭ Next":'bash -c "echo playlist-next | socat - /tmp/mpvsocket"' \
+    --button=$"☸ Repeat":'bash -c "echo cycle-values loop-file "inf" "no" | socat - /tmp/mpvsocket"' \
+    --button=$"⏹ Stop":'bash -c "echo stop | socat - /tmp/mpvsocket"' \
+    --button=$"◀◀ 10s":'bash -c "echo seek -10 | socat - /tmp/mpvsocket"' \
+    --button=$"◀◀ 2m":'bash -c "echo seek -120 | socat - /tmp/mpvsocket"' \
+    --button=$"2m ▶▶":'bash -c "echo seek 120 | socat - /tmp/mpvsocket"' \
+    --button=$"10s ▶▶":'bash -c "echo seek 10 | socat - /tmp/mpvsocket"' \
+    --button=$"✖ Quit":1 $(cat /tmp/dmelodyplaylist2)
+# exit on cancel
+    yadexitcode=$?
+    if [ $yadexitcode -eq 1 ] || [ $yadexitcode -eq 252 ]; then
+       echo quit | socat - /tmp/mpvsocket & killall -15 mpv
+       exit
+    fi
+fi
+# main player dialog
+    yad \
+    --list \
+    --no-click \
+    --no-markup \
+    --no-escape \
+    --width=1900 \
+    --height=1000 \
+    --separator='' \
+    --ellipsize=start \
+    --grid-lines=both \
+    --ellipsize-cols=7 \
+    --select-action="echo" > $DMELODY_CONFIG/click \
+    --dclick-action="DMELODYRUNNING" \
+    --column=$"No" \
+    --column=$"Artist" \
+    --column=$"Title" \
+    --column=$"Album" \
+    --column=$"Genre" \
+    --column=$"Duration" \
+    --column=$"File Name" \
+    --button=$"▶ Play":"bash -c mpvplay" \
+    --button=$"▶ Play Sel":"bash -c mpvplayselected" \
+    --button=$"✔ New Playlist":"bash -c mpvnewplaylist" \
+    --button=$"♬ Show Playing":"bash -c showcurrent" \
+    --button=$"⏮ Prev":'bash -c "echo playlist-prev | socat - /tmp/mpvsocket"' \
+    --button=$"⏸ Pause":'bash -c "echo cycle pause | socat - /tmp/mpvsocket"' \
+    --button=$"⏭ Next":'bash -c "echo playlist-next | socat - /tmp/mpvsocket"' \
+    --button=$"☸ Repeat":'bash -c "echo cycle-values loop-file "inf" "no" | socat - /tmp/mpvsocket"' \
+    --button=$"⏹ Stop":'bash -c "echo stop | socat - /tmp/mpvsocket"' \
+    --button=$"◀◀ 10s":'bash -c "echo seek -10 | socat - /tmp/mpvsocket"' \
+    --button=$"◀◀ 2m":'bash -c "echo seek -120 | socat - /tmp/mpvsocket"' \
+    --button=$"2m ▶▶":'bash -c "echo seek 120 | socat - /tmp/mpvsocket"' \
+    --button=$"10s ▶▶":'bash -c "echo seek 10 | socat - /tmp/mpvsocket"' \
+    --button=$"✖ Quit":1 $(cat $DMELODY_CONFIG/dplaylist2)
+# exit on cancel
+    yadexitcode=$?
+    if [ $yadexitcode -eq 1 ] || [ $yadexitcode -eq 252 ]; then
+       echo quit | socat - /tmp/mpvsocket & killall -15 mpv
+       exit
+    fi
+exec /opt/dmelody/dmelody &
