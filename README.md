@@ -21,16 +21,17 @@ It was tested on Debian Testing, it might as well run on your version/distributi
   2. The current version is set up to work with pipewire and wireplumber so you might want to set up your audio system accordingly, otherwise you would have to make changes in the dmelody script.
   3. In order to have the artist, title and duration displayed directly in swaybar (as you can see in the screenshot), you need to add the following to your sway config:
   
-        bar {
+          bar {
             position bottom
             separator_symbol @
-            workspace_buttons no
-            
+            workspace_buttons no 
             status_command while ~/.config/sway/swaybin/swaytray; do sleep 1; done
-        }
+          }
 
-  create the direcotory ~/.config/sway/swaybin
+  create the directory ~/.config/sway/swaybin
+  
   create a file ~/.config/sway/swaybin/swaytray
+  
   add the following lines to ~/.config/sway/swaybin/swaytray
        
         POSITION=$(echo '{ "command": ["get_property_string", "time-pos"] }' | socat - /tmp/mpvsocket | jq .data | tr '"' ' ' | cut -d'.' -f 1)
