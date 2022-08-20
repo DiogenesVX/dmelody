@@ -18,7 +18,7 @@ It was tested on Debian Testing, it might as well run on your version/distributi
 
 # Usage
   1. For correct work, place the dmelody script into /opt/dmelody/
-  2. The current version is set up to work with pipewire and wireplumber so you might want to set up your audio systemt accordingly, otherwise you would have to make changes in the dmelody script.
+  2. The current version is set up to work with pipewire and wireplumber so you might want to set up your audio system accordingly, otherwise you would have to make changes in the dmelody script.
   3. In order to have the artist, title and duration displayed directly in swaybar (as you can see in the screenshot), you need to add the following to your sway config:
   
         bar {
