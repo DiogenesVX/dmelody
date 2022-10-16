@@ -10,7 +10,7 @@ It was tested on Debian Testing, it might as well run on your version/distributi
    3. Play - to play the playlist and Play Sel - to play the selected track.
    4. Show currently playing track.
    5. Play previous, next, toggle pause, toggle repeat the current track.
-   6. Seek forward/backward by 10 senconds and 2 minutes.
+   6. Seek forward/backward by 10 seconds and 2 minutes.
    7. Display artist, title and duration directly in your swaybar.
 
 # Screenshot
